@@ -1,9 +1,9 @@
 from flask import Flask
-from src.modules.stocks_bot.main import start as stocks_start
+from src.modules.stocks_bot.index import start
 from dotenv import load_dotenv
 
 load_dotenv()
-stocks_start()
+start()
 
 app = Flask(__name__)
 

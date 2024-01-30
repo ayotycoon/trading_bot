@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from typing import Tuple
+from alpaca.data.models.news import NewsSet
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -9,7 +10,7 @@ model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert").t
 labels = ["positive", "negative", "neutral"]
 
 
-def estimate_sentiment(news):
+def estimate_sentiment(news: list[str]):
     if news:
         tokens = tokenizer(news, return_tensors="pt", padding=True).to(device)
 
