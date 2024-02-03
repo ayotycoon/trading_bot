@@ -1,9 +1,12 @@
-from flask import Flask
-from src.modules.stocks_bot.index import start
-from dotenv import load_dotenv
+from datetime import datetime
 
-load_dotenv()
-start()
+from flask import Flask
+from src.modules.stocks_bot.index import backtest
+
+backtest(
+    symbol="SPY",
+    start_date=datetime(2023, 12, 1),
+    end_date=datetime(2023, 12, 31))
 
 app = Flask(__name__)
 
