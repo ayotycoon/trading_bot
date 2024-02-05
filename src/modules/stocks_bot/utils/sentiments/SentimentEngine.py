@@ -1,75 +1,49 @@
 from datetime import datetime
+from typing import Union
 
 import torch
-from alpaca.data.historical.news import NewsClient
-from alpaca.data.models.news import NewsSet
-from alpaca.data.requests import NewsRequest
-from timedelta import Timedelta
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-from env import ENV
 from src.modules.stocks_bot.utils.News import get_alpaca_news
+from src.modules.stocks_bot.utils.sentiments.util import estimate_sentiment, get_dates
+from src.utils.safe_call import ignore_errors
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert").to(device)
-labels = ["positive", "negative", "neutral"]
-
-
-def estimate_sentiment(news: list[str]):
-    if news and len(news):
-        tokens = tokenizer(news, return_tensors="pt", padding=True).to(device)
-
-        result = model(tokens["input_ids"], attention_mask=tokens["attention_mask"])[
-            "logits"
-        ]
-        result = torch.nn.functional.softmax(torch.sum(result, 0), dim=-1)
-        probability = result[torch.argmax(result)]
-        sentiment = labels[torch.argmax(result)]
-        return sentiment, probability
-    else:
-        return labels[-1], 0
+w = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
 
 class SentimentEngine:
-    date: datetime
-    symbol: str
 
-    def __init__(self, date: datetime, symbol: str, last_price: float, cash: float, cash_at_risk: float, config={}):
-        self.date = date
-        self.config = config
-        self.symbol = symbol
-        self.cash = cash
-        self.cash_at_risk = cash_at_risk
-        self.last_price = last_price
+    def news_sentiment(self, symbol: str = None, date: datetime = None, config={}):
+        history = config['history']
+        # is_first_daily_trade = config['history'][-1]
+        is_first_daily_trade = len(history) == 0
+        date, prev_date = get_dates(date, config['sleeptime_delta'])
+        # if is_first_daily_trade and len(self.priceHistory) >1 and  len(self.priceHistory[-2]) > 0:
+        #     prev_date = self.priceHistory[-2][-1]["datetime"]
 
-    def get_dates(self):
-        delta: Timedelta = self.config['sleeptime_delta']
-        prev_date = self.date - delta
-        return self.date.strftime('%Y-%m-%dT%H:%M:%S'), prev_date.strftime('%Y-%m-%dT%H:%M:%S')
-
-    def news_sentiment(self):
-        date, prev_date = self.get_dates()
-        news = get_alpaca_news(self.symbol, prev_date, date)
+        news = ignore_errors(lambda: get_alpaca_news(symbol, prev_date, date), [])
         return estimate_sentiment(news)
 
-    def get_sentiment(self):
-        return self.news_sentiment()
+    def get_sentiment(self, symbol: str = None, date: datetime = None, config={}):
+        return self.news_sentiment(symbol, date, config)
 
-    def position_sizing(self):
-        quantity = round(self.cash * self.cash_at_risk / self.last_price, 0)
-        return self.cash, self.last_price, quantity
+    def get_decision(self, date: datetime, symbol: str, last_price: float, cash: float, cash_at_risk: float, config={}):
 
-    def get_decision(self):
-        sentiment, probability = self.get_sentiment()
-        if self.cash > self.last_price:
+        sentiment, probability, news = self.get_sentiment(symbol, date, config)
+        symbol_cash = cash * cash_at_risk
+        quantity = round(symbol_cash / last_price, 5)
+        decision = None
+        if cash > last_price:
             if sentiment == "positive" and probability > .999:
-                return "buy"
+                decision = "buy"
             elif sentiment == "negative" and probability > .999:
-                return "sell"
+                decision = "sell"
+            else:
+                quantity = 0
 
-        return None
+        return decision, cash, quantity, news,sentiment,probability,symbol_cash
+
+    def market_closed(self):
+        pass
 
 
 if __name__ == "__main__":
